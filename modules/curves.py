@@ -124,9 +124,9 @@ def plot_epi_curves(per_tf, highlight=HIGHLIGHT, ax=None, logy=True,
     return ax
 
 
-def plot_rank(curves, col='0.7', top_n=30, highlight=HIGHLIGHT):
+def plot_rank(curves, col='0.7', top_n=30, highlight=HIGHLIGHT, quantity='ε'):
     """Per-TF median (over experiments) of the fraction of peaks passing threshold `col`: ranked step curve of the
-    TFs with median > 0, and a bar plot of the top_n."""
+    TFs with median > 0, and a bar plot of the top_n. quantity: name of the thresholded value in the y label."""
     hl_col = {tf: plt.cm.Set2(i) for i, tf in enumerate(highlight)}
     s = curves[['tf', col]].dropna().groupby('tf')[col].median().sort_values(ascending=False)
     nz = s[s > 0]
@@ -140,7 +140,7 @@ def plot_rank(curves, col='0.7', top_n=30, highlight=HIGHLIGHT):
     a1.set_yscale('log', nonpositive='mask')
     a1.set(xlim=(-0.5, len(nz) - 0.5), ylim=(ymin, 1),
            xlabel=f'TF rank ({len(nz)} of {len(s)} TFs with median > 0)')
-    a1.set_ylabel(f'median fraction of peaks with ε ≥ {col} ln\n(×{np.exp(float(col)):.2f} over expected)')
+    a1.set_ylabel(f'median fraction of peaks with {quantity} ≥ {col} ln\n(×{np.exp(float(col)):.2f} over expected)')
     for j, tf in enumerate(t for t in highlight if t in nz.index):
         a1.annotate(tf, (rank[tf], nz[tf]), xytext=(6, 10 + 8 * j), textcoords='offset points',
                     fontsize=7, color=hl_col[tf], arrowprops=dict(arrowstyle='-', lw=0.5, color=hl_col[tf]))
