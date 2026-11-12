@@ -1,0 +1,9 @@
+logs/
+figures/*
+!figures/.gitkeep
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.DS_Store
+._*
+*.tmp

@@ -1,0 +1,38 @@
+# Environment used for the figure notebooks and the pipeline scripts in this repository
+# (the lab's `seqtfun031` env). Full, exact package list: environment/pip_freeze_seqtfun031.txt
+#   conda env create -f environment.yml && conda activate bpnet_grammar
+#   python -m ipykernel install --user --name bpnet_grammar
+# CUDA 12.6 build of torch; any recent CUDA build should do for the GPU steps.
+name: bpnet_grammar
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu126
+      - torch==2.13.0
+      - numpy==2.4.6
+      - pandas==3.0.5
+      - pyarrow==24.0.0
+      - polars==1.43.2
+      - scipy==1.18.0
+      - scikit-learn==1.9.0
+      - h5py==3.16.0
+      - matplotlib==3.11.1
+      - seaborn==0.13.2
+      - plotnine==0.15.8
+      - mizani==0.14.6
+      - statsmodels==0.15.0
+      - pypalettes==0.2.2
+      - pybbi==0.4.2
+      - pymisha==0.14.0
+      - bpnet-lite==1.0.0
+      - tangermeme==1.6.0
+      - cherimoya==0.3.1          # ControlWrapper / LogCountWrapper in pipeline/01_auroc
+      - finemo==0.41              # motif trimming in pipeline/00_download/download_motif_matrices.py
+      - jupyter==1.1.1
+      - nbconvert==7.17.1
+      - ipykernel==7.3.0
+      - git+https://github.com/vmindel/moodspy@ff20d7613c42c175b2784639cf66b1e1132c96d4
+      - git+https://github.com/vmindel/plotnine_extensions@bbace8667202918fd0024cfb9703aba79c2b5e71
