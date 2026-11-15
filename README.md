@@ -17,18 +17,21 @@ All model predictions are **predicted log counts with an all-zero control track*
 
 ```
 notebooks/Fig1-4.ipynb    one notebook per figure; each writes its panels to figures/
+  FigS1.ipynb             supplementary: what the models rely on (control track, motifs, sequence composition)
 modules/                  code shared by the notebooks and the pipeline
   paths.py                every location (data root, genome, repo folders), overridable by env variables
   bpnet_sets.py           the two model sets (PAPER / ALL_BPNET) and LSF array slicing
   curves.py               threshold-curve definitions (Figs 2, 3) and their plots
   peaks.py                example-peak helpers: models, motif hits, DeepLIFT/SHAP logos, knockout bar plots
+  perf.py                 Fig. S1 helpers: per-experiment test-set ROC/PR curves, TF-MoDISco report logos, families
   plot_setup.py           editable PDF text, figures/ folder
 pipeline/                 the scripts that made every table the figures read, in run order (00 -> 06)
   env.sh                  source before submitting jobs (python, data root, genome, logs)
   NN_step/run.sh          the LSF (bsub) commands of that step, as run for the paper
 metadata/                 ENCODE metadata tables, the PAPER selection, family accession tables, PWMs
-data/                     small cached tables behind the figures (~40 MB), committed so the figures can be redrawn
-  examples/               pipeline outputs of the example experiment (FOXA1 HepG2 ENCSR000BMO) used in Figs 2, 3
+data/                     small cached tables behind the figures (~75 MB), committed so the figures can be redrawn
+  examples/               pipeline outputs of the example experiments: FOXA1 HepG2 ENCSR000BMO (Figs 2, 3),
+                          SP4 and CTCF HepG2 (Fig. S1)
 environment.yml           conda/pip environment; environment/ has the exact package lists
 figures/                  output (not tracked)
 ```
@@ -49,6 +52,7 @@ jupyter lab notebooks/
 | Fig2 | `examples/HepG2_FOXA1_ENCSR000BMO/`, `self_epistasis_merged_direct_calc_wt.parquet` | FOXA1 ENCSR000BMO models + bigBed | logo cells |
 | Fig3 | `examples/HepG2_FOXA1_ENCSR000BMO/`, `epi_curves_pos.parquet`, `effect_curves_{direct,others}.parquet` | FOXA1 ENCSR000BMO models + bigBed | logo cells |
 | Fig4 | `{klf,fox}_obs.parquet`, `{klf,fox}_pred.parquet`, `{klf,fox}_pairwise_corr_famdirect.csv` | – | no |
+| FigS1 | `bpnet_big_table.parquet`, `examples/HepG2_{SP4,CTCF}/` | TF-MoDISco HTML reports of HepG2 SP4 and CTCF | no |
 
 The panels that only plot cached tables (all of Fig. 4, the curves of Figs 2–3, Fig. 1A and D–G) run without the
 data root. The example-peak logos recompute DeepLIFT/SHAP attributions and need the ENCODE model files and a GPU.
@@ -67,7 +71,7 @@ bash pipeline/00_download/run.sh     # then 01 ... 06, each after the previous o
 | Step | What | Output | Figure | Compute |
 |---|---|---|---|---|
 | `00_download` | ENCODE metadata of the 440-experiment PAPER selection (`metadata/big_subset_meta.orig.csv`) and of the 1,842 other ENCODE BPNet models; downloads models, test regions, peaks, controls, TF-MoDISco motifs, Fi-NeMo instances, bigBed motif annotations | `metadata/*.csv`, `$BPNET_DATA/{PAPER,ALL_BPNET}/` | all | CPU, network |
-| `01_auroc` | Test-set counts AUROC, peaks vs GC-matched nonpeaks, ENCODE's test folds: with the model's own control (reproduces ENCODE's value) and with no control | `data/auroc_summary.parquet` | 1A | GPU arrays |
+| `01_auroc` | Test-set counts AUROC/AUPRC, peaks vs GC-matched nonpeaks, ENCODE's test folds, with the model's own control (reproduces ENCODE's value) and with no control: real sequence, identity-mixed sequences, dinucleotide-shuffled sequences, and Fi-NeMo pattern_0 / other-motif knockouts in the test peaks; one table over all models | `data/auroc_summary.parquet`, `data/bpnet_big_table.parquet` | 1A, S1 | GPU arrays |
 | `02_motif_core_ic` | Information content of the central 20 bp of every TF-MoDISco motif, and the fraction of peaks with a Fi-NeMo hit (λ 0.7, counts head) | `data/ic_motifs_data.parquet` | 1D–G | CPU arrays |
 | `03_epistasis` | Shuffle-donor knockouts on every peak: direct motifs and/or other motifs replaced by dinucleotide-shuffle bases (20 shuffles). First with Fi-NeMo hits, then with ENCODE's bigBed annotation (direct = `category_type_simple == 'direct'`), reusing the first pass's `wt` | `motif_epistasis[_direct]_{tag}.parquet` | 2, 3 | GPU arrays |
 | `04_direct_sites` | Every direct site knocked out alone and all together, in the native peak and in a shuffled peak that keeps only the direct sites; then again with overlapping direct sites merged | `direct[_merged]_sites_{sites,peaks}_{tag}.parquet` | 2 | GPU arrays |
