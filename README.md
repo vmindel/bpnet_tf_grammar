@@ -20,7 +20,7 @@ All model predictions are **predicted log counts with an all-zero control track*
 ## Repository layout
 
 ```
-notebooks/Fig1-4.ipynb    one notebook per figure; each writes its panels to figures/
+notebooks/Fig1-4.ipynb    one notebook per figure, saved with outputs; each writes its panels to figures/
   FigS1.ipynb             supplementary: what the models rely on (control track, motifs, sequence composition)
   FigS2_cre_correlation.R supplementary: binding similarity over cCREs by TF subfamily (R script, not a notebook)
   FigS3.ipynb             supplementary: epistasis on a linear scale
@@ -124,3 +124,7 @@ with at least one peak with two or more direct sites.
 - The family folders of Fig. 4 (`klf_sp_hepg2/`, `fox_hepg2/`) are named `{TF}_HepG2_{BPNet annotation accession}`,
   the accession of ENCODE's BPNet model annotation, not of the ChIP-seq experiment (see
   `metadata/{klf_sp_hepg2,fox_hepg2}_bpnet_accessions.tsv`).
+
+## License
+
+MIT (see `LICENSE`).
