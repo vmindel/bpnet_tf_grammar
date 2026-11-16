@@ -1,0 +1,57 @@
+# Per peak set: 7-mer frequencies and motif enrichment (SEA-like) in the top 1,000 peaks (Fig. S2).
+# Run from the step's work folder in the data root (see run.sh):
+#   snakemake -s Snakefile_motifs --directory $BPNET_DATA/cre_signatures --config repo_data=...
+CELL_LINES, TFS = glob_wildcards("peaks_all/{cell_line}/{tf}.bed")
+PWM_RDS = config["repo_data"] + "/representative_motifs_pwms_big_families_trimmed.rds"
+print(f"Found {len(TFS)} peak files across cell lines: {sorted(set(CELL_LINES))}")
+
+
+rule all:
+    input:
+        config["repo_data"] + "/7mer_results.parquet",
+        config["repo_data"] + "/sea_top1000_results.parquet"
+
+
+rule run_sea_top1000:
+    input:
+        peaks = "peaks_all/{cell_line}/{tf}.bed",
+        pwm   = PWM_RDS
+    output:
+        "results/sea_top1000/{cell_line}/{tf}.parquet"
+    resources:
+        mem_mb = 16000, runtime = 60
+    script:
+        "scripts/run_sea_top1000.R"
+
+
+rule run_7mer:
+    input:
+        peaks = "peaks_all/{cell_line}/{tf}.bed"
+    output:
+        "results/7mer/{cell_line}/{tf}.parquet"
+    resources:
+        mem_mb = 8000, runtime = 30
+    script:
+        "scripts/run_7mer.R"
+
+
+rule combine_sea_top1000:
+    input:
+        expand("results/sea_top1000/{cell_line}/{tf}.parquet", zip, cell_line=CELL_LINES, tf=TFS)
+    output:
+        config["repo_data"] + "/sea_top1000_results.parquet"
+    resources:
+        mem_mb = 8000, runtime = 30
+    script:
+        "scripts/combine_sea.R"
+
+
+rule combine_7mer:
+    input:
+        expand("results/7mer/{cell_line}/{tf}.parquet", zip, cell_line=CELL_LINES, tf=TFS)
+    output:
+        config["repo_data"] + "/7mer_results.parquet"
+    resources:
+        mem_mb = 16000, runtime = 30
+    script:
+        "scripts/combine_7mer.R"

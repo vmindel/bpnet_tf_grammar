@@ -9,3 +9,4 @@ export PYTHONNOUSERSITE=1 TORCHDYNAMO_DISABLE=1
 export LOGS=$REPO/logs
 export GPU='-q short-gpu -gpu num=1:j_exclusive=no:gmem=16G'
 mkdir -p "$LOGS"
+export RBIN=${RBIN:-/home/labs/barkailab/vovam/miniconda/envs/genomics_r/bin}   # R for pipeline/07 and FigS2

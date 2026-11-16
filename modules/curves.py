@@ -10,6 +10,11 @@ one column per threshold (named str(t)).
   self_epi_curve   direct_merged_sites_*: synergy among the direct sites of a peak, in its native context (WT),
                    synergy = sum_i (ref - KO_i) - (ref - KOALL), over peaks with >= 2 direct sites (in both WT and
                    DiSh). Sites with no base inside the knockout window (bp_masked = 0) are left out.
+Linear-scale versions (Fig. S3), predictions converted from log counts to counts (expm1) and the departure from
+additivity expressed as a fraction of the intact peak's counts:
+  epi_curve_linear     (wt - none - (p0_only - none) - (non_only - none)) / wt
+  self_epi_curve(..., linear=True)   (KOALL + sum_i (ref - KO_i) - ref) / ref
+  side='neg' counts values <= -t (redundancy).
 """
 import os
 import numpy as np
@@ -40,6 +45,23 @@ def epi_curve(p, th=TH, side='pos'):
     return _frac_ge(x, th)
 
 
+COUNT_COLS = ['none', 'non_only', 'p0_only', 'wt']
+
+
+def epi_curve_linear(p, th=TH, side='pos'):
+    """Linear-scale interaction relative to wt counts, >= t (side='pos') or <= -t ('neg'); peaks with both motif sets."""
+    x = (pl.scan_parquet(p)
+         .filter((pl.col('n_p0') > 0) & (pl.col('n_other') > 0))
+         .with_columns(np.expm1(pl.col(COUNT_COLS)))
+         .select(((pl.col('wt') - pl.col('none') - (pl.col('non_only') - pl.col('none'))
+                   - (pl.col('p0_only') - pl.col('none'))) / pl.col('wt')).alias('interaction'))
+         .filter(pl.col('interaction').is_finite())
+         .collect()['interaction'].to_numpy())
+    if len(x) == 0:
+        return None
+    return _frac_ge(-x if side == 'neg' else x, th)
+
+
 def effect_curves(p, th=TH_EFF):
     """{'direct': ..., 'others': ...}: fraction of peaks with p0_only - none >= t / non_only - none >= t."""
     d = (pl.read_parquet(p, columns=['p0_only', 'non_only', 'none', 'n_p0', 'n_other'])
@@ -50,9 +72,13 @@ def effect_curves(p, th=TH_EFF):
                 others=_frac_ge((d['non_only'] - d['none']).to_numpy(), th))
 
 
-def self_synergy(peaks, sites):
+def self_synergy(peaks, sites, linear=False):
     """Per peak with >= 2 direct sites in both contexts: sum of single losses, the joint loss and
-    synergy_{WT,DiSh} = (KOALL + sum single losses) - ref. Index = peak_name. None if no site was knocked out."""
+    synergy_{WT,DiSh} = (KOALL + sum single losses) - ref. Index = peak_name. None if no site was knocked out.
+    linear=True: predictions in counts (expm1 of log counts) and synergy divided by ref."""
+    if linear:
+        sites = sites.assign(**{c: np.expm1(sites[c]) for c in ['prediction_ref', 'prediction']})
+        peaks = peaks.assign(**{c: np.expm1(peaks[c]) for c in ['WT', 'DiSh', 'KOALL_WT', 'KOALL_DiSh']})
     st = sites[sites.bp_masked > 0].copy()
     if len(st) == 0:
         return None
@@ -69,14 +95,20 @@ def self_synergy(peaks, sites):
         w[f'ref_{c}'] = ref
         w[f'ref_add_{c}'] = koall + w[f'sum_single_{c}']               # additive expectation for the intact peak
         w[f'synergy_{c}'] = w[f'ref_add_{c}'] - ref                    # = sum single - (ref - KOALL); > 0 cooperative
+        if linear:
+            w[f'synergy_{c}'] /= ref
     return w
 
 
-def self_epi_curve(peaks_file, sites_file, th=TH, context='WT'):
-    w = self_synergy(pd.read_parquet(peaks_file), pd.read_parquet(sites_file))
+def self_epi_curve(peaks_file, sites_file, th=TH, context='WT', linear=False, side='pos'):
+    w = self_synergy(pd.read_parquet(peaks_file), pd.read_parquet(sites_file), linear=linear)
     if w is None or len(w) == 0:
         return None
-    return _frac_ge(w[f'synergy_{context}'].to_numpy(), th)
+    x = w[f'synergy_{context}'].to_numpy()
+    x = x[np.isfinite(x)]
+    if len(x) == 0:
+        return None
+    return _frac_ge(-x if side == 'neg' else x, th)
 
 
 def label(path, root):
@@ -95,7 +127,7 @@ def per_tf(curves, th=TH):
 # ----------------------------------------------------------------------------------------------- plots
 def plot_epi_curves(per_tf, highlight=HIGHLIGHT, ax=None, logy=True,
                     ylabel='fraction of peaks with epistasis ≥ t', sem=None, ymin=1e-4,
-                    xlabel='epistasis threshold t (log counts)'):
+                    xlabel='epistasis threshold t (log counts)', show_mean=False):
     """Grey line per TF, IQR band and median across TFs, highlighted TFs (± SEM over their experiments)."""
     ax = ax or plt.gca()
     th = per_tf.columns.astype(float)
@@ -108,6 +140,8 @@ def plot_epi_curves(per_tf, highlight=HIGHLIGHT, ax=None, logy=True,
     q25, q75 = per_tf.quantile(0.25), per_tf.quantile(0.75)
     ax.fill_between(th, band(q25.values), band(q75.values), color='tab:purple', alpha=0.25, lw=0,
                     label='IQR across TFs')
+    if show_mean:
+        ax.plot(th, mask(per_tf.mean()).values, color='darkslateblue', lw=2, label=f'mean over {len(per_tf)} TFs')
     ax.plot(th, mask(per_tf.median()).values, color='darkslateblue', lw=1.5, ls='--', label='median')
     for j, tf in enumerate(t for t in highlight if t in per_tf.index):
         c, m = plt.cm.Set2(j), per_tf.loc[tf]

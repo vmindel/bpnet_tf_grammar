@@ -1,0 +1,68 @@
+# ChIP-seq signal over every ENCODE cCRE, per experiment, and the Pearson correlation between experiments (Fig. S2).
+# Run from the step's work folder in the data root (see run.sh):
+#   snakemake -s Snakefile_signal --directory $BPNET_DATA/cre_signatures --config meta=... repo_data=...
+import pandas as pd
+
+ENCODE_BASE = "https://www.encodeproject.org"
+config.setdefault("peak_set", "external/GRCh38-cCREs.bed")      # ENCODE SCREEN cCREs (2,348,854 regions)
+
+# ── Load metadata ─────────────────────────────────────────────────────────────
+META = pd.read_csv(config["meta"], index_col=0)
+META = META[META["bigwig_href"].notna() & (META["bigwig_href"] != "")].copy()
+META = META.drop_duplicates(subset=["cell_line", "gene_symbol"])
+CELL_LINES   = META["cell_line"].tolist()
+GENE_SYMBOLS = META["gene_symbol"].tolist()
+EXP_NAMES    = [f"{cl}_{gs}" for cl, gs in zip(CELL_LINES, GENE_SYMBOLS)]
+print(f"Snakemake: {len(META)} experiments across {META['cell_line'].nunique()} cell lines.")
+
+
+def get_bw_url(wildcards):
+    row = META[(META.cell_line == wildcards.cell_line) & (META.gene_symbol == wildcards.gene_symbol)].iloc[0]
+    href = row["bigwig_href"]
+    return ENCODE_BASE + href if href.startswith("/") else href
+
+
+rule all:
+    input:
+        config["repo_data"] + "/big_cre_matrix_correlations.parquet"
+
+
+rule download_bigwig:
+    priority: 0
+    output:
+        temp("tmp_bw/{cell_line}/{gene_symbol}.bigWig")
+    params:
+        url = get_bw_url
+    resources:
+        mem_mb = 2000, runtime = 30, bigwig_slots = 1
+    shell:
+        "wget -q --tries=3 -O {output} '{params.url}'"
+
+
+rule calc_signal_cre:
+    priority: 10
+    wildcard_constraints:
+        gene_symbol = "(?!.*_self)[A-Za-z0-9_]+"
+    input:
+        bw = "tmp_bw/{cell_line}/{gene_symbol}.bigWig"
+    output:
+        "results_cre_max/{cell_line}_{gene_symbol}.rds"
+    params:
+        peak_set = config["peak_set"]
+    resources:
+        mem_mb = 8000, runtime = 60, bigwig_slots = 1
+    script:
+        "scripts/calc_signal_max.R"
+
+
+rule cre_correlations:
+    input:
+        expand("results_cre_max/{cell_line}_{gene_symbol}.rds", zip, cell_line=CELL_LINES, gene_symbol=GENE_SYMBOLS)
+    output:
+        config["repo_data"] + "/big_cre_matrix_correlations.parquet"
+    params:
+        names = EXP_NAMES
+    resources:
+        mem_mb = 48000, runtime = 120
+    script:
+        "scripts/cre_correlations.R"

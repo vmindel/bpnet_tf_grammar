@@ -4,8 +4,10 @@
   data/effect_curves_direct.parquet    p0_only - none >= t                 (Fig. 3, effect curves)
   data/effect_curves_others.parquet    non_only - none >= t
   data/self_epistasis_merged_direct_calc_wt.parquet   direct-site synergy >= t, native context (Fig. 2)
+  'linear' (Fig. S3): the same on a linear scale, relative to the intact peak, for synergy (>= t) and redundancy (<= -t)
+  data/epi_curves_linear_{pos,neg}.parquet, data/self_epistasis_merged_direct_calc_wt_linear_{pos,neg}.parquet
 Experiments with no qualifying peak get no row. Existing tables are rebuilt only with FORCE=1.
-Usage: bsub -q short -o $LOGS/curves.log $PY build_curves.py [epi effect self]"""
+Usage: bsub -q short -o $LOGS/curves.log $PY build_curves.py [epi effect self linear]"""
 import glob
 import os
 import sys
@@ -13,10 +15,10 @@ from pathlib import Path
 import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'modules'))
 import paths
-from curves import TH, TH_EFF, epi_curve, effect_curves, self_epi_curve, label
+from curves import TH, TH_EFF, epi_curve, epi_curve_linear, effect_curves, self_epi_curve, label
 
 FORCE = os.environ.get('FORCE') == '1'
-WHICH = sys.argv[1:] or ['epi', 'effect', 'self']
+WHICH = sys.argv[1:] or ['epi', 'effect', 'self', 'linear']
 ROOT = str(paths.ROOT)
 
 
@@ -68,4 +70,23 @@ if 'self' in WHICH and todo('self_epistasis_merged_direct_calc_wt.parquet'):
         if c is not None:
             rows.append({**label(p, ROOT), **dict(zip(TH.astype(str), c))})
     save(rows, 'self_epistasis_merged_direct_calc_wt.parquet')
+
+if 'linear' in WHICH:
+    pk = experiments('direct_merged_sites_peaks_*.parquet')
+    st = experiments('direct_merged_sites_sites_*.parquet')
+    for side in ['pos', 'neg']:
+        if todo(f'epi_curves_linear_{side}.parquet'):
+            rows = []
+            for p in epi_files:
+                c = epi_curve_linear(p, side=side)
+                if c is not None:
+                    rows.append({**label(p, ROOT), **dict(zip(TH.astype(str), c))})
+            save(rows, f'epi_curves_linear_{side}.parquet')
+        if todo(f'self_epistasis_merged_direct_calc_wt_linear_{side}.parquet'):
+            rows = []
+            for p, s in zip(pk, st):
+                c = self_epi_curve(p, s, linear=True, side=side)
+                if c is not None:
+                    rows.append({**label(p, ROOT), **dict(zip(TH.astype(str), c))})
+            save(rows, f'self_epistasis_merged_direct_calc_wt_linear_{side}.parquet')
 print('DONE', flush=True)

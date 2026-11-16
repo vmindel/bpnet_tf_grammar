@@ -10,6 +10,10 @@ total) with their TF-MoDISco motifs and Fi-NeMo / ENCODE motif instances, and as
 - whether members of a TF family bind differently because of their own motif or because of the other motifs
   around it — KLF/SP vs FOX in HepG2 (Fig. 4).
 
+Supplementary: what the models rely on — control track, motifs, sequence composition (Fig. S1); what makes binding
+similar between experiments — ChIP-seq signal over ENCODE cCREs, 7-mers, motifs, genomic annotation (Fig. S2);
+epistasis on a linear scale (Fig. S3).
+
 All model predictions are **predicted log counts with an all-zero control track**
 (`CountWrapper(ControlWrapper(BasePairNet))`, bpnet-lite), averaged over the 5 folds, unless stated otherwise.
 
@@ -18,21 +22,25 @@ All model predictions are **predicted log counts with an all-zero control track*
 ```
 notebooks/Fig1-4.ipynb    one notebook per figure; each writes its panels to figures/
   FigS1.ipynb             supplementary: what the models rely on (control track, motifs, sequence composition)
+  FigS2_cre_correlation.R supplementary: binding similarity over cCREs by TF subfamily (R script, not a notebook)
+  FigS3.ipynb             supplementary: epistasis on a linear scale
+  run_notebooks.sh        executes the notebooks on compute nodes
 modules/                  code shared by the notebooks and the pipeline
   paths.py                every location (data root, genome, repo folders), overridable by env variables
   bpnet_sets.py           the two model sets (PAPER / ALL_BPNET) and LSF array slicing
-  curves.py               threshold-curve definitions (Figs 2, 3) and their plots
+  curves.py               threshold-curve definitions (Figs 2, 3, S3) and their plots
   peaks.py                example-peak helpers: models, motif hits, DeepLIFT/SHAP logos, knockout bar plots
   perf.py                 Fig. S1 helpers: per-experiment test-set ROC/PR curves, TF-MoDISco report logos, families
   plot_setup.py           editable PDF text, figures/ folder
-pipeline/                 the scripts that made every table the figures read, in run order (00 -> 06)
+pipeline/                 the scripts that made every table the figures read, in run order (00 -> 07)
   env.sh                  source before submitting jobs (python, data root, genome, logs)
   NN_step/run.sh          the LSF (bsub) commands of that step, as run for the paper
 metadata/                 ENCODE metadata tables, the PAPER selection, family accession tables, PWMs
-data/                     small cached tables behind the figures (~75 MB), committed so the figures can be redrawn
+data/                     cached tables behind the figures (~115 MB), committed so the figures can be redrawn
+  cre_signatures/         Fig. S2 tables
   examples/               pipeline outputs of the example experiments: FOXA1 HepG2 ENCSR000BMO (Figs 2, 3),
                           SP4 and CTCF HepG2 (Fig. S1)
-environment.yml           conda/pip environment; environment/ has the exact package lists
+environment.yml           conda/pip environment; environment/ has the exact package lists and the R environment
 figures/                  output (not tracked)
 ```
 
@@ -53,9 +61,12 @@ jupyter lab notebooks/
 | Fig3 | `examples/HepG2_FOXA1_ENCSR000BMO/`, `epi_curves_pos.parquet`, `effect_curves_{direct,others}.parquet` | FOXA1 ENCSR000BMO models + bigBed | logo cells |
 | Fig4 | `{klf,fox}_obs.parquet`, `{klf,fox}_pred.parquet`, `{klf,fox}_pairwise_corr_famdirect.csv` | – | no |
 | FigS1 | `bpnet_big_table.parquet`, `examples/HepG2_{SP4,CTCF}/` | TF-MoDISco HTML reports of HepG2 SP4 and CTCF | no |
+| FigS2 (R) | `cre_signatures/*` | ENCODE cCREs (`cre_signatures/external/GRCh38-cCREs.bed`) | no |
+| FigS3 | `epi_curves_linear_{pos,neg}.parquet`, `self_epistasis_merged_direct_calc_wt_linear_{pos,neg}.parquet` | – | no |
 
-The panels that only plot cached tables (all of Fig. 4, the curves of Figs 2–3, Fig. 1A and D–G) run without the
-data root. The example-peak logos recompute DeepLIFT/SHAP attributions and need the ENCODE model files and a GPU.
+Fig. S2 is an R script (`environment/R_environment.md`): `Rscript notebooks/FigS2_cre_correlation.R` from the
+repository root (options `--cell-line HepG2`, `--output-dir figures`). The panels that only plot cached tables (all
+of Figs 4, S3, the curves of Figs 2–3, Fig. 1A and D–G) run without the data root. The example-peak logos recompute DeepLIFT/SHAP attributions and need the ENCODE model files and a GPU.
 
 ## Rebuilding everything: the pipeline
 
@@ -65,7 +76,7 @@ the ENCODE files in `$BPNET_DATA/{PAPER,ALL_BPNET}/{cell}/{experiment}/` (the EN
 
 ```bash
 source pipeline/env.sh
-bash pipeline/00_download/run.sh     # then 01 ... 06, each after the previous one finished
+bash pipeline/00_download/run.sh     # then 01 ... 07, each after the previous one finished
 ```
 
 | Step | What | Output | Figure | Compute |
@@ -75,8 +86,9 @@ bash pipeline/00_download/run.sh     # then 01 ... 06, each after the previous o
 | `02_motif_core_ic` | Information content of the central 20 bp of every TF-MoDISco motif, and the fraction of peaks with a Fi-NeMo hit (λ 0.7, counts head) | `data/ic_motifs_data.parquet` | 1D–G | CPU arrays |
 | `03_epistasis` | Shuffle-donor knockouts on every peak: direct motifs and/or other motifs replaced by dinucleotide-shuffle bases (20 shuffles). First with Fi-NeMo hits, then with ENCODE's bigBed annotation (direct = `category_type_simple == 'direct'`), reusing the first pass's `wt` | `motif_epistasis[_direct]_{tag}.parquet` | 2, 3 | GPU arrays |
 | `04_direct_sites` | Every direct site knocked out alone and all together, in the native peak and in a shuffled peak that keeps only the direct sites; then again with overlapping direct sites merged | `direct[_merged]_sites_{sites,peaks}_{tag}.parquet` | 2 | GPU arrays |
-| `05_curves` | Per experiment, fraction of peaks passing each threshold (interaction, single-set effects, direct-site synergy) | `data/epi_curves_pos.parquet`, `data/effect_curves_*.parquet`, `data/self_epistasis_merged_direct_calc_wt.parquet` | 2, 3 | CPU |
+| `05_curves` | Per experiment, fraction of peaks passing each threshold (interaction, single-set effects, direct-site synergy; log and linear scale) | `data/epi_curves_*.parquet`, `data/effect_curves_*.parquet`, `data/self_epistasis_merged_direct_calc_wt*.parquet` | 2, 3, S3 | CPU |
 | `06_family_ko` | KLF/SP and FOX models in HepG2: observed and predicted counts over the union of their peaks, knockouts of the family's own motif instances / the others / all, pairwise correlations between members | `data/{klf,fox}_*` | 4 | GPU, ~2–4 h per family |
+| `07_cre_signatures` | The 440 PAPER ChIP-seq experiments: maximum fold change over each of the 2.35 M ENCODE cCREs and the Pearson correlation between experiments; 7-mer frequencies and HOCOMOCO v14 motif enrichment of the peaks; genomic annotation (ChIPseeker). Snakemake + R | `data/cre_signatures/` | S2 | CPU (Snakemake on LSF) |
 
 Model sets: **PAPER** = 440 experiments with a BPNet model in six cell lines (A549, GM12878, H1, HEK293, HepG2, K562);
 **ALL_BPNET** = 1,842 further ENCODE BPNet experiments (`modules/bpnet_sets.py`, env `BPNET_SET=paper|all`).
@@ -106,6 +118,9 @@ with at least one peak with two or more direct sites.
 - The pipeline steps were run in the lab's `seqtfun` environment (`environment/seqtfun_original_runs.yml`;
   tangermeme 1.5.0), the figure notebooks in `seqtfun031` (`environment.yml`; tangermeme 1.6.0), which also runs
   the pipeline. `pipeline/env.sh` points at `seqtfun031`.
+- Step 07 (Fig. S2) was run from a separate working folder; its Snakemake rules and R scripts are copied unchanged
+  except for paths, the signal script is the max-over-cCRE variant that produced the correlations (checked:
+  identical to 1e-11), and the motif-set and annotation scripts were interactive R code, turned into scripts.
 - The family folders of Fig. 4 (`klf_sp_hepg2/`, `fox_hepg2/`) are named `{TF}_HepG2_{BPNet annotation accession}`,
   the accession of ENCODE's BPNet model annotation, not of the ChIP-seq experiment (see
   `metadata/{klf_sp_hepg2,fox_hepg2}_bpnet_accessions.tsv`).
